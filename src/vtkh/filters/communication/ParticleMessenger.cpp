@@ -234,18 +234,77 @@ ParticleMessenger::Exchange(list<Particle> &outData,
     map<int, list<Particle>> sendData;
 
     if (stats) stats->start("communication");
+
+    //Check if we have anything coming in.
+    std::list<ParticleCommData<Particle>> particleData;
+    std::vector<MsgCommData> msgData;
+    int val = 0;
     int earlyTerm = 0;
+
+    DBG("-----RecvAny..."<<endl);
+    if (RecvAny(&msgData, &particleData, NULL, false))
+    {
+        DBG("-----Recv: M: "<<msgData.size()<<" P: "<<particleData.size()<<std::endl);
+        for (auto &p : particleData)
+        {
+            //check if particle belongs here
+            //TODO
+            
+            //if yes, proceed normally, if no, add to new send list and remove blockid[0]
+            if(true)
+            {
+                inData.push_back(p.p);
+            }
+            else
+            {
+                if(p.p.blockId.size() == 1)
+                {
+                    //early terminate
+                    term.push_back(p.p);
+                    earlyTerm++;
+                    DBG("-----earlyterm: "<<p.p<<" id= "<<p.p.blockId[0]<<endl);
+                }
+                else
+                {
+                   //remove this blockId and queue particle to send to next possible block
+                   p.p.blockId.erase(p.p.blockId.begin());
+                   outData.push_back(p.p);
+                }
+            }
+        }
+
+        for (auto &m : msgData)
+        {
+            if (m.message[0] == MSG_TERMINATE)
+            {
+                val += m.message[1];
+                DBG("-----TERMinate: Recv: "<<m.message[1]<<endl);
+            }
+            else if (m.message[0] == MSG_DONE)
+            {
+                DBG("-----DONE RECEIVED: "<<m.message[1]<<endl);
+                done = true;
+            }
+        }
+    }
+    else
+    {
+        DBG("-----RecvAny --Nothing in the can"<<endl);
+    }
+
+
     if (!outData.empty())
     {
-        vector<int> blockIds;
+        vector<vector<int>> blockIds;
         boundsMap.FindBlockIDs(outData, blockIds);
         DBG("-----O.blockIds: "<<outData<<" "<<blockIds<<endl);
 
         auto bit = blockIds.begin();
         for (auto lit = outData.begin(); lit != outData.end(); lit++, bit++)
         {
-            int id = *bit;
-            lit->blockId = id;
+            //always send to the first possible domain
+            int id = (*bit)[0];
+            lit->blockId[0] = id;
             if (id == -1)
             {
                 term.push_back(*lit);
@@ -276,37 +335,6 @@ ParticleMessenger::Exchange(list<Particle> &outData,
         std::vector<int> msg = {MSG_TERMINATE, increment};
         DBG("-----SendAllMsg: msg="<<msg<<endl);
         SendAllMsg(msg);
-    }
-
-    //Check if we have anything coming in.
-    std::list<ParticleCommData<Particle>> particleData;
-    std::vector<MsgCommData> msgData;
-    int val = 0;
-
-    DBG("-----RecvAny..."<<endl);
-    if (RecvAny(&msgData, &particleData, NULL, false))
-    {
-        DBG("-----Recv: M: "<<msgData.size()<<" P: "<<particleData.size()<<std::endl);
-        for (auto &p : particleData)
-            inData.push_back(p.p);
-
-        for (auto &m : msgData)
-        {
-            if (m.message[0] == MSG_TERMINATE)
-            {
-                val += m.message[1];
-                DBG("-----TERMinate: Recv: "<<m.message[1]<<endl);
-            }
-            else if (m.message[0] == MSG_DONE)
-            {
-                DBG("-----DONE RECEIVED: "<<m.message[1]<<endl);
-                done = true;
-            }
-        }
-    }
-    else
-    {
-        DBG("-----RecvAny --Nothing in the can"<<endl);
     }
 
     CheckPendingSendRequests();

@@ -74,8 +74,8 @@ class ParticleMessenger : public Messenger
 
     enum
     {
-        MESSAGE_TAG = 0xbadbeef,
-        PARTICLE_TAG = 0xfeebdab
+        MESSAGE_TAG = 042000,
+        PARTICLE_TAG = 0x42001
     };
 
     //Message headers.

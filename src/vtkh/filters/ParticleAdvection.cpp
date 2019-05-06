@@ -152,7 +152,7 @@ public:
             {
                 std::list<Particle> I, T, A;
 
-                DataBlock *blk = filter->GetBlock(particles[0].blockId);
+                DataBlock *blk = filter->GetBlock(particles[0].blockId[0]);
 
                 stats->start("advect");
                 int n = blk->integrator.Trace(particles, filter->GetMaxSteps(), I, T, A, &traces);
@@ -378,7 +378,7 @@ void ParticleAdvection::TraceSingleThread(vector<vtkm::worklet::StreamlineResult
       if (GetActiveParticles(v))
       {
           DBG("GetActiveParticles: "<<v<<std::endl);
-          DataBlock *blk = GetBlock(v[0].blockId);
+          DataBlock *blk = GetBlock(v[0].blockId[0]);
           DBG("Integrate: "<<v<<std::endl);
 
           std::list<Particle> T, A;
@@ -541,7 +541,8 @@ ParticleAdvection::GetActiveParticles(std::vector<Particle> &v)
     if (active.empty())
         return false;
 
-    int blockId = active.front().blockId;
+//TODO why do we need this?
+//    int blockId = active.front().blockId;
     while (!active.empty())
     {
         Particle p = active.front();
@@ -662,7 +663,7 @@ ParticleAdvection::BoxOfSeeds(const vtkm::Bounds &box,
           id = rank*N+i;
 
       Particle p;
-      p.blockId = domId;
+      p.blockId[0] = domId;
       p.id = id;
       p.coords[0] = randRange(boxRange[0], boxRange[1]);
       p.coords[1] = randRange(boxRange[2], boxRange[3]);
@@ -692,25 +693,28 @@ ParticleAdvection::CreateSeeds()
         }
     }
     else if (seedMethod == RANDOM)
+    {
         BoxOfSeeds(boundsMap.globalBounds, seeds);
+    }
     else if (seedMethod == RANDOM_BOX)
+    {
         BoxOfSeeds(seedBox, seeds);
+    }
     else if (seedMethod == POINT)
     {
         Particle p(seedPoint, 0);
         seeds.push_back(p);
     }
-
     if (seedMethod == RANDOM_BLOCK)
         active.insert(active.end(), seeds.begin(), seeds.end());
     else
     {
-        vector<int> domainIds;
+        std::vector<std::vector<int>> domainIds;
         boundsMap.FindBlockIDs(seeds, domainIds);
         for (int i = 0; i < seeds.size(); i++)
-            if (DomainToRank(domainIds[i]) == rank)
+            if (DomainToRank(domainIds[i][0]) == rank)
             {
-                seeds[i].blockId = domainIds[i];
+                seeds[i].blockId[0] = domainIds[i][0];
                 active.push_back(seeds[i]);
             }
     }

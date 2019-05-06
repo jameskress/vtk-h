@@ -14,18 +14,18 @@ class Particle
 public:
     enum Status {ACTIVE, TERMINATE, OUTOFBOUNDS};
 
-    Particle() : coords(), id(-1), nSteps(0), status(ACTIVE), blockId(-1) {}
-    Particle(const std::vector<float> &c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
+    Particle() : coords(), id(-1), nSteps(0), status(ACTIVE) {}
+    Particle(const std::vector<float> &c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE) {}
     Particle(const std::vector<double> &c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
-    Particle(const double *c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
-    Particle(const float *c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
-    Particle(const vtkm::Vec<double,3> &c, int _id) : coords(c), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
-    Particle(const vtkm::Vec<float,3> &c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE), blockId(-1) {}
+    Particle(const double *c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE) {}
+    Particle(const float *c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE) {}
+    Particle(const vtkm::Vec<double,3> &c, int _id) : coords(c), id(_id), nSteps(0), status(ACTIVE) {}
+    Particle(const vtkm::Vec<float,3> &c, int _id) : coords(c[0],c[1],c[2]), id(_id), nSteps(0), status(ACTIVE) {}
     Particle(const Particle &p) : coords(p.coords), nSteps(p.nSteps), id(p.id), status(p.status), blockId(p.blockId) {}
 
     vtkm::Vec<double,3> coords;
+    std::vector<int> blockId{-1};
     int id, nSteps;
-    int blockId;
     Status status;
 
     friend std::ostream &operator<<(std::ostream &os, const vtkh::Particle p)
@@ -36,7 +36,9 @@ public:
         if (p.status == Particle::ACTIVE) os<<"ACTIVE";
         else if (p.status == Particle::TERMINATE) os<<"TERM";
         else if (p.status == Particle::OUTOFBOUNDS) os<<"OOB";
-        os<<" bid = "<<p.blockId;
+        os<<" bid = ";
+        for(int i = 0; i < p.blockId.size(); i++)
+            os<<p.blockId[i] << " ";
         os<<")";
         return os;
     }
