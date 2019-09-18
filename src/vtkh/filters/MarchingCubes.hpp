@@ -1,6 +1,7 @@
 #ifndef VTK_H_MARCHING_CUBES_HPP
 #define VTK_H_MARCHING_CUBES_HPP
 
+#include <vtkh/vtkh_exports.h>
 #include <vtkh/vtkh.hpp>
 #include <vtkh/filters/Filter.hpp>
 #include <vtkh/DataSet.hpp>
@@ -8,11 +9,11 @@
 namespace vtkh
 {
 
-class MarchingCubes : public Filter
+class VTKH_API MarchingCubes : public Filter
 {
 public:
-  MarchingCubes(); 
-  virtual ~MarchingCubes(); 
+  MarchingCubes();
+  virtual ~MarchingCubes();
   std::string GetName() const override;
   void SetIsoValue(const double &iso_value);
   void SetIsoValues(const double *iso_values, const int &num_values);
@@ -23,7 +24,6 @@ protected:
   void PreExecute() override;
   void PostExecute() override;
   void DoExecute() override;
-  bool ContainsIsoValues(vtkm::cont::DataSet &dom);
 
   std::vector<double> m_iso_values;
   std::string m_field_name;

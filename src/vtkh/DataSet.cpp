@@ -1,6 +1,7 @@
 #include "DataSet.hpp"
 
 #include <vtkh/Error.hpp>
+#include <vtkh/Logger.hpp>
 
 // FIXME:UDA: vtkm_dataset_info depends on vtkm::rendering
 #include <vtkh/utils/vtkm_dataset_info.hpp>
@@ -11,12 +12,37 @@
 #include <vtkm/cont/Error.h>
 #include <vtkm/cont/ArrayHandleConstant.h>
 #include <vtkm/cont/TryExecute.h>
+#include <vtkm/worklet/DispatcherMapField.h>
 #ifdef VTKH_PARALLEL
   #include <mpi.h>
 #endif
 namespace vtkh {
 namespace detail
 {
+//
+// returns true if all ranks say true
+//
+bool GlobalAgreement(bool local)
+{
+  bool agreement = local;
+#ifdef VTKH_PARALLEL
+  int local_boolean = local ? 1 : 0;
+  int global_boolean;
+  MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
+  MPI_Allreduce((void *)(&local_boolean),
+                (void *)(&global_boolean),
+                1,
+                MPI_INT,
+                MPI_SUM,
+                mpi_comm);
+
+  if(global_boolean != vtkh::GetMPISize())
+  {
+    agreement = false;
+  }
+#endif
+  return agreement;
+}
 
 template<typename T>
 class MemSetWorklet : public vtkm::worklet::WorkletMapField
@@ -30,43 +56,28 @@ public:
   {
   }
 
-  typedef void ControlSignature(FieldOut<>);
+  typedef void ControlSignature(FieldOut);
   typedef void ExecutionSignature(_1);
-  
+
   VTKM_EXEC
   void operator()(T &value) const
   {
     value = Value;
   }
-}; //class MemSetWorklet 
-
-struct MemSetCaller 
-{
-
-  template <typename Device, typename T>
-  VTKM_CONT bool operator()(Device, 
-                            vtkm::cont::ArrayHandle<T> &array,
-                            const T value,
-                            const vtkm::Id num_values) const
-  {
-    VTKM_IS_DEVICE_ADAPTER_TAG(Device);
-    array.PrepareForOutput(num_values, Device());
-    vtkm::worklet::DispatcherMapField<MemSetWorklet<T>, Device>(MemSetWorklet<T>(value))
-      .Invoke(array);
-    return true;
-  }
-};
+}; //class MemSetWorklet
 
 template<typename T>
 void MemSet(vtkm::cont::ArrayHandle<T> &array, const T value, const vtkm::Id num_values)
 {
-  vtkm::cont::TryExecute(MemSetCaller(), array, value, num_values);
+  array.Allocate(num_values);
+  vtkm::worklet::DispatcherMapField<MemSetWorklet<T>>(MemSetWorklet<T>(value))
+    .Invoke(array);
 }
 
 } // namespace detail
 
-void 
-DataSet::AddDomain(vtkm::cont::DataSet data_set, vtkm::Id domain_id) 
+void
+DataSet::AddDomain(vtkm::cont::DataSet data_set, vtkm::Id domain_id)
 {
   if(m_domains.size() != 0)
   {
@@ -79,7 +90,7 @@ DataSet::AddDomain(vtkm::cont::DataSet data_set, vtkm::Id domain_id)
   m_domain_ids.push_back(domain_id);
 }
 
-vtkm::cont::Field 
+vtkm::cont::Field
 DataSet::GetField(const std::string &field_name, const vtkm::Id domain_index)
 {
   assert(domain_index >= 0);
@@ -89,7 +100,7 @@ DataSet::GetField(const std::string &field_name, const vtkm::Id domain_index)
 }
 
 vtkm::cont::DataSet&
-DataSet::GetDomain(const vtkm::Id index) 
+DataSet::GetDomain(const vtkm::Id index)
 {
   const size_t num_domains = m_domains.size();
 
@@ -100,7 +111,7 @@ DataSet::GetDomain(const vtkm::Id index)
        <<" in "<<num_domains<<" domains.";
     throw Error(msg.str());
   }
- 
+
   return  m_domains[index];
 
 }
@@ -111,10 +122,10 @@ DataSet::GetDomainIds() const
   return m_domain_ids;
 }
 
-void 
-DataSet::GetDomain(const vtkm::Id index, 
-                   vtkm::cont::DataSet &data_set, 
-                   vtkm::Id &domain_id) 
+void
+DataSet::GetDomain(const vtkm::Id index,
+                   vtkm::cont::DataSet &data_set,
+                   vtkm::Id &domain_id)
 {
   const size_t num_domains = m_domains.size();
 
@@ -125,30 +136,63 @@ DataSet::GetDomain(const vtkm::Id index,
        <<" in "<<num_domains<<" domains.";
     throw Error(msg.str());
   }
- 
+
   data_set = m_domains[index];
   domain_id = m_domain_ids[index];
 
 }
 
-vtkm::Id 
+vtkm::Id
 DataSet::GetNumberOfDomains() const
 {
   return static_cast<vtkm::Id>(m_domains.size());
 }
 
-vtkm::Id 
+vtkm::Id
+DataSet::GetNumberOfCells() const
+{
+  vtkm::Id num_cells = 0;
+  const size_t num_domains = m_domains.size();
+  for(size_t i = 0; i < num_domains; ++i)
+  {
+    num_cells += m_domains[i].GetCellSet().GetNumberOfCells();
+  }
+  return num_cells;
+}
+
+vtkm::Id
+DataSet::GetGlobalNumberOfCells() const
+{
+  vtkm::Id num_cells = GetNumberOfCells();;
+#ifdef VTKH_PARALLEL
+  MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
+  long long int local_cells = static_cast<long long int>(num_cells);
+  long long int global_cells = 0;
+  MPI_Allreduce(&local_cells,
+                &global_cells,
+                1,
+                MPI_LONG_LONG,
+                MPI_SUM,
+                mpi_comm);
+  num_cells = global_cells;
+#endif
+  return num_cells;
+}
+
+
+
+vtkm::Id
 DataSet::GetGlobalNumberOfDomains() const
 {
-  vtkm::Id domains = this->GetNumberOfDomains(); 
-#ifdef VKTH_PARALLEL 
+  vtkm::Id domains = this->GetNumberOfDomains();
+#ifdef VTKH_PARALLEL
   MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
-  int local_doms = static_cast<int>(domains);  
+  int local_doms = static_cast<int>(domains);
   int global_doms = 0;
-  MPI_Allreduce(&local_doms, 
-                &global_doms, 
-                1, 
-                MPI_INT, 
+  MPI_Allreduce(&local_doms,
+                &global_doms,
+                1,
+                MPI_INT,
                 MPI_SUM,
                 mpi_comm);
   domains = global_doms;
@@ -156,7 +200,7 @@ DataSet::GetGlobalNumberOfDomains() const
   return domains;
 }
 
-vtkm::Bounds 
+vtkm::Bounds
 DataSet::GetDomainBounds(const int &domain_index,
                          vtkm::Id coordinate_system_index) const
 {
@@ -164,8 +208,8 @@ DataSet::GetDomainBounds(const int &domain_index,
   vtkm::cont::CoordinateSystem coords;
   try
   {
-    coords = m_domains[domain_index].GetCoordinateSystem(index); 
-  } 
+    coords = m_domains[domain_index].GetCoordinateSystem(index);
+  }
   catch (const vtkm::cont::Error &error)
   {
     std::stringstream msg;
@@ -179,7 +223,7 @@ DataSet::GetDomainBounds(const int &domain_index,
 }
 
 
-vtkm::Bounds 
+vtkm::Bounds
 DataSet::GetBounds(vtkm::Id coordinate_system_index) const
 {
   const vtkm::Id index = coordinate_system_index;
@@ -196,9 +240,10 @@ DataSet::GetBounds(vtkm::Id coordinate_system_index) const
   return bounds;
 }
 
-vtkm::Bounds 
+vtkm::Bounds
 DataSet::GetGlobalBounds(vtkm::Id coordinate_system_index) const
 {
+  VTKH_DATA_OPEN("GetGlobalBounds");
   vtkm::Bounds bounds;
   bounds = GetBounds(coordinate_system_index);
 
@@ -219,7 +264,7 @@ DataSet::GetGlobalBounds(vtkm::Id coordinate_system_index) const
   vtkm::Float64 global_z_max = 0;
 
   MPI_Allreduce((void *)(&x_min),
-                (void *)(&global_x_min), 
+                (void *)(&global_x_min),
                 1,
                 MPI_DOUBLE,
                 MPI_MIN,
@@ -233,7 +278,7 @@ DataSet::GetGlobalBounds(vtkm::Id coordinate_system_index) const
                 mpi_comm);
 
   MPI_Allreduce((void *)(&y_min),
-                (void *)(&global_y_min), 
+                (void *)(&global_y_min),
                 1,
                 MPI_DOUBLE,
                 MPI_MIN,
@@ -247,7 +292,7 @@ DataSet::GetGlobalBounds(vtkm::Id coordinate_system_index) const
                 mpi_comm);
 
   MPI_Allreduce((void *)(&z_min),
-                (void *)(&global_z_min), 
+                (void *)(&global_z_min),
                 1,
                 MPI_DOUBLE,
                 MPI_MIN,
@@ -267,10 +312,11 @@ DataSet::GetGlobalBounds(vtkm::Id coordinate_system_index) const
   bounds.Z.Min = global_z_min;
   bounds.Z.Max = global_z_max;
 #endif
+  VTKH_DATA_CLOSE();
   return bounds;
 }
 
-vtkm::cont::ArrayHandle<vtkm::Range> 
+vtkm::cont::ArrayHandle<vtkm::Range>
 DataSet::GetRange(const std::string &field_name) const
 {
   const size_t num_domains = m_domains.size();
@@ -288,12 +334,9 @@ DataSet::GetRange(const std::string &field_name) const
     const vtkm::cont::Field &field = m_domains[i].GetField(field_name);
     vtkm::cont::ArrayHandle<vtkm::Range> sub_range;
     sub_range = field.GetRange();
-     
-    num_components = sub_range.GetPortalConstControl().GetNumberOfValues();    
-    range = sub_range;
 
-    vtkm::Id components = sub_range.GetPortalConstControl().GetNumberOfValues();    
- 
+    vtkm::Id components = sub_range.GetPortalConstControl().GetNumberOfValues();
+
     // first range with data. Set range and keep looking
     if(num_components == 0)
     {
@@ -301,7 +344,7 @@ DataSet::GetRange(const std::string &field_name) const
       range = sub_range;
       continue;
     }
-    
+
     // This is not the first valid range encountered.
     // Validate and expand the current range
     if(components != num_components)
@@ -321,13 +364,13 @@ DataSet::GetRange(const std::string &field_name) const
       range.GetPortalControl().Set(c, c_range);
     }
   }
-  
   return range;
 }
 
-vtkm::cont::ArrayHandle<vtkm::Range> 
+vtkm::cont::ArrayHandle<vtkm::Range>
 DataSet::GetGlobalRange(const std::string &field_name) const
 {
+  VTKH_DATA_OPEN("GetGlobalRange");
   vtkm::cont::ArrayHandle<vtkm::Range> range;
   range = GetRange(field_name);
 
@@ -338,7 +381,7 @@ DataSet::GetGlobalRange(const std::string &field_name) const
   // it is possible to have an empty dataset at one of the ranks
   // so we must check for this so MPI comm does not hang.
   // We also want to check for num components mis-match
-  // 
+  //
   int *global_components = new int[vtkh::GetMPISize()];
   int comps = static_cast<int>(num_components);
 
@@ -361,7 +404,7 @@ DataSet::GetGlobalRange(const std::string &field_name) const
       components = global_components[i];
       continue;
     }
-    
+
     // verify that this matches are current components
     if(global_components[i] != 0 && components != global_components[i])
     {
@@ -394,14 +437,14 @@ DataSet::GetGlobalRange(const std::string &field_name) const
       else
       {
         local_min = std::numeric_limits<vtkm::Float64>::max();
-        local_max = std::numeric_limits<vtkm::Float64>::min();
+        local_max = std::numeric_limits<vtkm::Float64>::lowest();
       }
-      
+
       vtkm::Float64 global_min = 0;
       vtkm::Float64 global_max = 0;
 
       MPI_Allreduce((void *)(&local_min),
-                    (void *)(&global_min), 
+                    (void *)(&global_min),
                     1,
                     MPI_DOUBLE,
                     MPI_MIN,
@@ -421,10 +464,11 @@ DataSet::GetGlobalRange(const std::string &field_name) const
 
   delete[] global_components;
 #endif
+  VTKH_DATA_CLOSE();
   return range;
 }
 
-void 
+void
 DataSet::PrintSummary(std::ostream &stream) const
 {
   for(size_t dom = 0; dom < m_domains.size(); ++dom)
@@ -434,23 +478,66 @@ DataSet::PrintSummary(std::ostream &stream) const
   }
 }
 
-bool 
-DataSet::IsStructured(int &topological_dims, const vtkm::Id cell_set_index) const
+bool
+DataSet::IsEmpty() const
 {
-  topological_dims = -1;
-  bool is_structured = false;
+  bool is_empty = true;
+  const size_t num_domains = m_domains.size();
+  for(size_t i = 0; i < num_domains; ++i)
+  {
+    auto cellset = m_domains[i].GetCellSet();
+    if(cellset.GetNumberOfCells() > 0)
+    {
+      is_empty = false;
+      break;
+    }
+  }
+
+  return is_empty;
+}
+
+bool
+DataSet::GlobalIsEmpty() const
+{
+  bool is_empty = IsEmpty();
+  is_empty = detail::GlobalAgreement(is_empty);
+  return is_empty;
+}
+
+bool
+DataSet::IsPointMesh() const
+{
+  bool is_points = true;
   const size_t num_domains = m_domains.size();
   for(size_t i = 0; i < num_domains; ++i)
   {
     const vtkm::cont::DataSet &dom = m_domains[i];
-    int dims; 
-    is_structured = VTKMDataSetInfo::IsStructured(dom, dims, cell_set_index);
+    vtkm::UInt8 shape_type;
+    bool single_type = VTKMDataSetInfo::IsSingleCellShape(dom.GetCellSet(), shape_type);
+    is_points = (single_type && shape_type == 1) && is_points;
+  }
+
+  is_points = detail::GlobalAgreement(is_points);
+  return is_points;
+}
+
+bool
+DataSet::IsStructured(int &topological_dims) const
+{
+  topological_dims = -1;
+  bool is_structured = true;
+  const size_t num_domains = m_domains.size();
+  for(size_t i = 0; i < num_domains; ++i)
+  {
+    const vtkm::cont::DataSet &dom = m_domains[i];
+    int dims;
+    is_structured = VTKMDataSetInfo::IsStructured(dom, dims) && is_structured;
 
     if(i == 0)
     {
-      topological_dims = dims;    
+      topological_dims = dims;
     }
-    
+
     if(!is_structured || dims != topological_dims)
     {
       topological_dims = -1;
@@ -458,26 +545,12 @@ DataSet::IsStructured(int &topological_dims, const vtkm::Id cell_set_index) cons
     }
   }
 
-#ifdef VTKH_PARALLEL
-  int local_boolean = is_structured ? 1 : 0; 
-  int global_boolean;
-  MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
-  MPI_Allreduce((void *)(&local_boolean),
-                (void *)(&global_boolean),
-                1,
-                MPI_INT,
-                MPI_SUM,
-                mpi_comm);
+  is_structured = detail::GlobalAgreement(is_structured);
 
-  if(global_boolean != vtkh::GetMPISize())
-  {
-    is_structured = false;
-  }
   if(!is_structured)
   {
     topological_dims = -1;
   }
-#endif
   return is_structured;
 }
 
@@ -490,7 +563,7 @@ DataSet::SetCycle(const vtkm::UInt64 cycle)
 vtkm::UInt64
 DataSet::GetCycle() const
 {
-  return m_cycle; 
+  return m_cycle;
 }
 
 DataSet::DataSet()
@@ -502,8 +575,8 @@ DataSet::~DataSet()
 {
 }
 
-vtkm::cont::DataSet& 
-DataSet::GetDomainById(const vtkm::Id domain_id) 
+vtkm::cont::DataSet&
+DataSet::GetDomainById(const vtkm::Id domain_id)
 {
   const size_t size = m_domain_ids.size();
 
@@ -525,11 +598,11 @@ bool DataSet::HasDomainId(const vtkm::Id &domain_id) const
   {
     if(m_domain_ids[i] == domain_id) return true;
   }
-  
+
   return false;
 }
 
-void 
+void
 DataSet::AddConstantPointField(const vtkm::Float32 value, const std::string fieldname)
 {
   const size_t size = m_domain_ids.size();
@@ -544,7 +617,7 @@ DataSet::AddConstantPointField(const vtkm::Float32 value, const std::string fiel
   }
 }
 
-bool 
+bool
 DataSet::FieldExists(const std::string &field_name) const
 {
   bool exists = false;
@@ -561,12 +634,12 @@ DataSet::FieldExists(const std::string &field_name) const
   return exists;
 }
 
-bool 
+bool
 DataSet::GlobalFieldExists(const std::string &field_name) const
 {
   bool exists = FieldExists(field_name);
-#ifdef VTKH_VTKH_PARALLEL
-  int local_boolean = exists ? 1 : 0; 
+#ifdef VTKH_PARALLEL
+  int local_boolean = exists ? 1 : 0;
   int global_boolean;
 
   MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
@@ -597,11 +670,11 @@ DataSet::GetFieldAssociation(const std::string field_name, bool &valid_field) co
   valid_field = true;
   if(!this->GlobalFieldExists(field_name))
   {
-    valid_field = false; 
+    valid_field = false;
     return vtkm::cont::Field::Association::ANY;
   }
-  
-  int assoc_id = -1; 
+
+  int assoc_id = -1;
   if(this->FieldExists(field_name))
   {
     const size_t num_domains = m_domains.size();
@@ -630,15 +703,11 @@ DataSet::GetFieldAssociation(const std::string field_name, bool &valid_field) co
         {
           assoc_id = 3;
         }
-        else if ( local_assoc == vtkm::cont::Field::Association::LOGICAL_DIM)
-        {
-          assoc_id = 4;
-        }
         break;
       }
     }
   }
-  
+
 #ifdef VTKH_PARALLEL
 
   MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
@@ -695,13 +764,9 @@ DataSet::GetFieldAssociation(const std::string field_name, bool &valid_field) co
   {
     assoc = vtkm::cont::Field::Association::CELL_SET;
   }
-  else if ( assoc_id == 4)
-  {
-    assoc = vtkm::cont::Field::Association::LOGICAL_DIM;
-  }
   else
   {
-    throw Error("Get association: unknow association");
+    throw Error("Get association: unknown association");
   }
   return assoc;
 }

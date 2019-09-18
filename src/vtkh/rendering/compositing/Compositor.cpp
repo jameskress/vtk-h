@@ -4,35 +4,43 @@
 #include <assert.h>
 #include <algorithm>
 
-namespace vtkh 
+#ifdef VTKH_PARALLEL
+#include <mpi.h>
+#include <vtkh/vtkh.hpp>
+#include <vtkh/rendering/compositing/DirectSendCompositor.hpp>
+#include <vtkh/rendering/compositing/RadixKCompositor.hpp>
+#include <diy/mpi.hpp>
+#endif
+
+namespace vtkh
 {
 
-Compositor::Compositor() 
+Compositor::Compositor()
   : m_composite_mode(Z_BUFFER_SURFACE)
-{ 
-
-}
-
-Compositor::~Compositor() 
 {
 
 }
 
-void 
+Compositor::~Compositor()
+{
+
+}
+
+void
 Compositor::SetCompositeMode(CompositeMode composite_mode)
 {
   // assure we don't have mixed image types
   assert(m_images.size() == 0);
-  m_composite_mode = composite_mode; 
+  m_composite_mode = composite_mode;
 }
 
-void 
+void
 Compositor::ClearImages()
 {
   m_images.clear();
 }
 
-void 
+void
 Compositor::AddImage(const unsigned char *color_buffer,
                      const float *        depth_buffer,
                      const int            width,
@@ -40,7 +48,7 @@ Compositor::AddImage(const unsigned char *color_buffer,
 {
   assert(m_composite_mode != VIS_ORDER_BLEND);
   assert(depth_buffer != NULL);
-  Image image; 
+  Image image;
   if(m_images.size() == 0)
   {
     m_images.push_back(image);
@@ -71,10 +79,10 @@ Compositor::AddImage(const unsigned char *color_buffer,
                                width,
                                height);
   }
-    
+
 }
 
-void 
+void
 Compositor::AddImage(const float *color_buffer,
                      const float *depth_buffer,
                      const int    width,
@@ -82,7 +90,7 @@ Compositor::AddImage(const float *color_buffer,
 {
   assert(m_composite_mode != VIS_ORDER_BLEND);
   assert(depth_buffer != NULL);
-  Image image; 
+  Image image;
   if(m_images.size() == 0)
   {
     m_images.push_back(image);
@@ -113,10 +121,10 @@ Compositor::AddImage(const float *color_buffer,
                                width,
                                height);
   }
-    
+
 }
 
-void 
+void
 Compositor::AddImage(const unsigned char *color_buffer,
                      const float         *depth_buffer,
                      const int            width,
@@ -134,7 +142,7 @@ Compositor::AddImage(const unsigned char *color_buffer,
                              vis_order);
 }
 
-void 
+void
 Compositor::AddImage(const float *color_buffer,
                      const float *depth_buffer,
                      const int    width,
@@ -153,7 +161,7 @@ Compositor::AddImage(const float *color_buffer,
                              vis_order);
 }
 
-Image 
+Image
 Compositor::Composite()
 {
   assert(m_images.size() != 0);
@@ -180,32 +188,51 @@ Compositor::Cleanup()
 
 }
 
-std::string 
-Compositor::GetLogString() 
-{ 
-  std::string res = m_log_stream.str(); 
+std::string
+Compositor::GetLogString()
+{
+  std::string res = m_log_stream.str();
   m_log_stream.str("");
   return res;
-}     
+}
 
-void 
+void
 Compositor::CompositeZBufferSurface()
 {
-  // nothing to do here. Images were composited as 
+  // nothing to do here in serial. Images were composited as
   // they were added to the compositor
+#ifdef VTKH_PARALLEL
+  diy::mpi::communicator diy_comm;
+  diy_comm = diy::mpi::communicator(MPI_Comm_f2c(GetMPICommHandle()));
+
+  assert(m_images.size() == 1);
+  RadixKCompositor compositor;
+  compositor.CompositeSurface(diy_comm, this->m_images[0]);
+  m_log_stream<<compositor.GetTimingString();
+#endif
 }
 
-void 
+void
 Compositor::CompositeZBufferBlend()
 {
-  assert("this is not implemented yet" == "error");  
+  assert("this is not implemented yet" == "error");
 }
 
-void 
+void
 Compositor::CompositeVisOrder()
 {
+
+#ifdef VTKH_PARALLEL
+  diy::mpi::communicator diy_comm;
+  diy_comm = diy::mpi::communicator(MPI_Comm_f2c(GetMPICommHandle()));
+
+  assert(m_images.size() != 0);
+  DirectSendCompositor compositor;
+  compositor.CompositeVolume(diy_comm, this->m_images);
+#else
   vtkh::ImageCompositor compositor;
   compositor.OrderedComposite(m_images);
+#endif
 }
 
 } // namespace vtkh

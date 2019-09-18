@@ -18,10 +18,10 @@
 TEST(vtkh_slice, vtkh_slice)
 {
   vtkh::DataSet data_set;
- 
+
   const int base_size = 32;
-  const int num_blocks = 1; 
-  
+  const int num_blocks = 1;
+
   for(int i = 0; i < num_blocks; ++i)
   {
     data_set.AddDomain(CreateTestData(i, num_blocks, base_size), i);
@@ -40,31 +40,31 @@ TEST(vtkh_slice, vtkh_slice)
   float bg_color[4] = { 0.f, 0.f, 0.f, 1.f};
   vtkm::rendering::Camera camera;
   camera.ResetToBounds(bounds);
-  vtkh::Render render = vtkh::MakeRender(512, 
-                                         512, 
-                                         camera, 
-                                         *slice, 
+  vtkh::Render render = vtkh::MakeRender(512,
+                                         512,
+                                         camera,
+                                         *slice,
                                          "slice",
-                                          bg_color);  
+                                          bg_color);
   vtkh::RayTracer tracer;
   tracer.SetInput(slice);
-  tracer.SetField("cell_data"); 
+  tracer.SetField("cell_data_Float64");
 
   vtkh::Scene scene;
   scene.AddRenderer(&tracer);
   scene.AddRender(render);
   scene.Render();
 
-  delete slice; 
+  delete slice;
 }
 
 TEST(vtkh_slice, vtkh_mulit_slice)
 {
   vtkh::DataSet data_set;
- 
+
   const int base_size = 32;
-  const int num_blocks = 1; 
-  
+  const int num_blocks = 1;
+
   for(int i = 0; i < num_blocks; ++i)
   {
     data_set.AddDomain(CreateTestData(i, num_blocks, base_size), i);
@@ -73,13 +73,13 @@ TEST(vtkh_slice, vtkh_mulit_slice)
   vtkm::Bounds bounds;
   vtkh::Scene scene;
   std::vector<vtkm::Id> domain_ids;
-  
+
   // add the first slice
   vtkh::Slice slicer1;
 
-  vtkm::Vec<vtkm::Float32,3> normal1(1.0f,1.f,.0f);
+  vtkm::Vec<vtkm::Float32,3> normal1(.0f,5.f,.5f);
   vtkm::Vec<vtkm::Float32,3> point1(16.f,16.f,16.f);
-  vtkm::Vec<vtkm::Float32,3> normal2(1.f,.0f,.0f);
+  vtkm::Vec<vtkm::Float32,3> normal2(.5f,.5f,.5f);
   vtkm::Vec<vtkm::Float32,3> point2(16.f,16.f,16.f);
   slicer1.AddPlane(point1, normal1);
   slicer1.AddPlane(point2, normal2);
@@ -91,21 +91,21 @@ TEST(vtkh_slice, vtkh_mulit_slice)
 
   vtkh::RayTracer tracer1;
   tracer1.SetInput(slice1);
-  tracer1.SetField("cell_data"); 
+  tracer1.SetField("cell_data_Float64");
   scene.AddRenderer(&tracer1);
 
-  
+
   float bg_color[4] = { 0.f, 0.f, 0.f, 1.f};
 
-  vtkh::Render render = vtkh::MakeRender(512, 
-                                         512, 
-                                         bounds, 
-                                         domain_ids, 
+  vtkh::Render render = vtkh::MakeRender(512,
+                                         512,
+                                         bounds,
+                                         domain_ids,
                                          "2slice",
-                                          bg_color);  
-  
+                                          bg_color);
+
   scene.AddRender(render);
   scene.Render();
-  
-  delete slice1; 
+
+  delete slice1;
 }

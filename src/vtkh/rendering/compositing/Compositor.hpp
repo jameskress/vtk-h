@@ -2,18 +2,19 @@
 #define VTKH_COMPOSITOR_BASE_HPP
 
 #include <sstream>
+#include <vtkh/vtkh_exports.h>
 #include <vtkh/rendering/Image.hpp>
 
-namespace vtkh 
+namespace vtkh
 {
 
-class Compositor
+class VTKH_API Compositor
 {
 public:
-    enum CompositeMode { 
+    enum CompositeMode {
                          Z_BUFFER_SURFACE, // zbuffer composite no transparency
-                         Z_BUFFER_BLEND,   // zbuffer composite with transparency 
-                         VIS_ORDER_BLEND   // blend images in a specific order 
+                         Z_BUFFER_BLEND,   // zbuffer composite with transparency
+                         VIS_ORDER_BLEND   // blend images in a specific order
                        };
     Compositor();
 
@@ -22,7 +23,7 @@ public:
     void SetCompositeMode(CompositeMode composite_mode);
 
     void ClearImages();
-    
+
     void AddImage(const unsigned char *color_buffer,
                   const float *        depth_buffer,
                   const int            width,
@@ -32,7 +33,7 @@ public:
                   const float *depth_buffer,
                   const int    width,
                   const int    height);
-    
+
     void AddImage(const unsigned char *color_buffer,
                   const float *        depth_buffer,
                   const int            width,
@@ -44,12 +45,12 @@ public:
                   const int    width,
                   const int    height,
                   const int    vis_order);
-    
+
     Image Composite();
 
     virtual void         Cleanup();
-    
-    std::string          GetLogString(); 
+
+    std::string          GetLogString();
 
     unsigned char * ConvertBuffer(const float *buffer, const int size)
     {
@@ -71,7 +72,7 @@ protected:
     virtual void CompositeZBufferBlend();
     virtual void CompositeVisOrder();
 
-    std::stringstream   m_log_stream;    
+    std::stringstream   m_log_stream;
     CompositeMode       m_composite_mode;
     std::vector<Image>  m_images;
 };

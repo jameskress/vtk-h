@@ -1,17 +1,18 @@
 #ifndef VTK_H_ISO_VOLUME_HPP
 #define VTK_H_ISO_VOLUME_HPP
 
+#include <vtkh/vtkh_exports.h>
 #include <vtkh/filters/Filter.hpp>
 #include <memory>
 
 namespace vtkh
 {
 
-class IsoVolume: public Filter
+class VTKH_API IsoVolume: public Filter
 {
 public:
-  IsoVolume(); 
-  virtual ~IsoVolume(); 
+  IsoVolume();
+  virtual ~IsoVolume();
   std::string GetName() const override;
   void SetRange(const vtkm::Range range);
   void SetField(const std::string field_name);
