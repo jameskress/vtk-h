@@ -6,7 +6,6 @@
 
 namespace vtkh
 {
-
   VTKH_API std::string AboutVTKH();
   // is backend support compiled in
   VTKH_API bool        IsSerialAvailable();

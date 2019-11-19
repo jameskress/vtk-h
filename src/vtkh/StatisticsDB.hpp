@@ -425,24 +425,23 @@ private:
     std::ofstream outputStream;
 };
 
-extern vtkh::StatisticsDB stats;
-#ifdef ENABLE_STATISTICS
-#define ADD_COUNTER(nm) stats.AddCounter(nm)
-#define COUNTER_INC(nm, val) stats.Increment(nm, val)
+extern vtkh::StatisticsDB statsDB;
+//#ifdef ENABLE_STATISTICS
+#define ADD_COUNTER(nm) statsDB.AddCounter(nm)
+#define COUNTER_INC(nm, val) statsDB.Increment(nm, val)
+#define ADD_TIMER(nm) statsDB.AddTimer(nm)
+#define TIMER_START(nm) statsDB.Start(nm)
+#define TIMER_STOP(nm) statsDB.Stop(nm)
+#define DUMP_STATS(fname) statsDB.DumpStats(fname)
+//#else
+//#define ADD_COUNTER(nm)
+//#define COUNTER_INC(nm, val)
 
-#define ADD_TIMER(nm) stats.AddTimer(nm)
-#define TIMER_START(nm) stats.Start(nm)
-#define TIMER_STOP(nm) stats.Stop(nm)
-#define DUMP_STATS(fname) stats.DumpStats(fname)
-#else
-#define ADD_COUNTER(nm)
-#define COUNTER_INC(nm, val)
-
-#define ADD_TIMER(nm)
-#define TIMER_START(nm)
-#define TIMER_STOP(nm)
-#define DUMP_STATS(fname)
-#endif
+//#define ADD_TIMER(nm)
+//#define TIMER_START(nm)
+//#define TIMER_STOP(nm)
+//#define DUMP_STATS(fname)
+//#endif
 }
 
 #endif //__STATISTICS_DB_H
